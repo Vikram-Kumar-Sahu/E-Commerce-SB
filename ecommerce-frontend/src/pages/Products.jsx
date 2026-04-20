@@ -1,8 +1,15 @@
-// Products.jsx
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import API from "../api/axios";
 import ProductCard from "../components/ProductCard";
 import HeroSlider from "../components/HeroSlider";
+
+const SORT_OPTIONS = [
+  { value: "default", label: "Featured" },
+  { value: "price-low", label: "Price: Low → High" },
+  { value: "price-high", label: "Price: High → Low" },
+  { value: "rating", label: "Top Rated" },
+  { value: "newest", label: "Newest" },
+];
 
 export default function Products() {
   const [products, setProducts] = useState([]);
@@ -10,116 +17,197 @@ export default function Products() {
   const [categories, setCategories] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [sortBy, setSortBy] = useState("default");
+  const [search, setSearch] = useState("");
+  const [loadCount, setLoadCount] = useState(8);
+  const [sortOpen, setSortOpen] = useState(false);
+  const sortRef = useRef(null);
 
- useEffect(() => {
-  API.get("/products")
-    .then((res) => {
-      console.log("API RESPONSE:", res.data);
-      setProducts(res.data);
-      setLoading(false); // ✅ ADD THIS
-    })
-    .catch((err) => {
-      console.error(err);
-      setLoading(false); // ✅ ALSO ADD HERE
-    });
-}, []);
+  useEffect(() => {
+    API.get("/products")
+      .then((res) => {
+        const data = res.data;
+        setProducts(data);
+        const cats = [...new Set(data.map(p => p.category).filter(Boolean))];
+        setCategories(cats);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, []);
 
-    // Fetch categories (optional)
+  useEffect(() => {
+    const handler = (e) => {
+      if (sortRef.current && !sortRef.current.contains(e.target)) {
+        setSortOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
 
-  // Filter and sort products
   const filteredProducts = products
-    .filter(product => selectedCategory === "all" || product.category === selectedCategory)
+    .filter(p =>
+      (selectedCategory === "all" || p.category === selectedCategory) &&
+      (search === "" ||
+        p.name?.toLowerCase().includes(search.toLowerCase()) ||
+        p.brand?.toLowerCase().includes(search.toLowerCase()))
+    )
     .sort((a, b) => {
       if (sortBy === "price-low") return a.price - b.price;
       if (sortBy === "price-high") return b.price - a.price;
       if (sortBy === "rating") return (b.rating || 0) - (a.rating || 0);
+      if (sortBy === "newest") return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
       return 0;
     });
 
+  const visibleProducts = filteredProducts.slice(0, loadCount);
+  const hasMore = loadCount < filteredProducts.length;
+  const currentSortLabel = SORT_OPTIONS.find(o => o.value === sortBy)?.label ?? "Featured";
+
+  // Loader
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-500 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-16 h-16 border-4 border-white border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-white text-lg font-medium">Loading products...</p>
+      <div className="min-h-screen bg-[#080808] flex flex-col items-center justify-center gap-5">
+        <div className="w-12 h-12 rounded-full border border-purple-300/20 border-t-purple-400 animate-spin"></div>
+        <span className="text-[11px] font-bold tracking-[0.26em] uppercase text-white/25">
+          Loading Collection
+        </span>
+        <div className="flex gap-1">
+          <span className="w-1 h-1 rounded-full bg-purple-400/40 animate-bounce"></span>
+          <span className="w-1 h-1 rounded-full bg-purple-400/40 animate-bounce delay-150"></span>
+          <span className="w-1 h-1 rounded-full bg-purple-400/40 animate-bounce delay-300"></span>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
-      {/* Hero Slider */}
+    <div className="min-h-screen bg-[#080808] text-white relative">
+
+      {/* Hero */}
       <HeroSlider />
 
-      {/* Products Section */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        
-        {/* Filters and Sort Section */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
-          <div>
-            <h2 className="text-2xl md:text-3xl font-bold text-gray-800">Featured Products</h2>
-            <p className="text-gray-600 mt-1">Discover our best-selling items</p>
-          </div>
-          
-          <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
-            {/* Category Filter */}
-            <select
-              value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value)}
-              className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 focus:outline-none focus:border-purple-500"
-            >
-              <option value="all">All Categories</option>
-              {categories.map((category) => (
-                <option key={category.id} value={category.name}>
-                  {category.name}
-                </option>
-              ))}
-            </select>
+      {/* Controls */}
+      <div className="sticky top-0 z-[100] bg-[#080808]/90 backdrop-blur-xl border-b border-white/10">
+        <div className="max-w-[1440px] mx-auto px-[clamp(16px,5vw,72px)] h-[52px] flex items-center gap-3">
 
-            {/* Sort Options */}
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
-              className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 focus:outline-none focus:border-purple-500"
-            >
-              <option value="default">Sort by: Default</option>
-              <option value="price-low">Price: Low to High</option>
-              <option value="price-high">Price: High to Low</option>
-              <option value="rating">Top Rated</option>
-            </select>
-          </div>
-        </div>
-
-        {/* Products Grid */}
-        {filteredProducts.length === 0 ? (
-          <div className="text-center py-12">
-            <svg className="w-24 h-24 mx-auto text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+          {/* Search */}
+          <div className="relative flex-[0_0_clamp(160px,22vw,260px)]">
+            <svg className="absolute left-2.5 top-1/2 -translate-y-1/2"
+                 width="13" height="13" stroke="rgba(255,255,255,0.22)">
+              <circle cx="11" cy="11" r="7" strokeWidth="1.6"/>
+              <path d="M16.5 16.5L21 21" strokeWidth="1.6"/>
             </svg>
-            <p className="text-gray-500 text-lg">No products found.</p>
-            <p className="text-gray-400">Try adjusting your filters</p>
+            <input
+              className="w-full h-8 bg-white/5 border border-white/10 rounded-sm pl-8 pr-2 text-[12px] text-white/70 outline-none focus:border-purple-400/40 focus:bg-purple-400/5"
+              placeholder="Search shoes…"
+              value={search}
+              onChange={e => { setSearch(e.target.value); setLoadCount(8); }}
+            />
           </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {filteredProducts.map((product) => (
+
+          {/* Categories */}
+          <div className="flex gap-1 overflow-x-auto flex-1">
+            <button
+              onClick={() => { setSelectedCategory("all"); setLoadCount(8); }}
+              className={`h-7 px-3 text-[10px] uppercase border rounded-sm ${
+                selectedCategory === "all"
+                  ? "bg-purple-400/10 border-purple-400 text-purple-400"
+                  : "border-white/10 text-white/40 hover:bg-white/5"
+              }`}
+            >
+              All
+            </button>
+
+            {categories.map(cat => (
+              <button
+                key={cat}
+                onClick={() => { setSelectedCategory(cat); setLoadCount(8); }}
+                className={`h-7 px-3 text-[10px] uppercase border rounded-sm ${
+                  selectedCategory === cat
+                    ? "bg-purple-400/10 border-purple-400 text-purple-400"
+                    : "border-white/10 text-white/40 hover:bg-white/5"
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+
+          {/* Count */}
+          <span className="text-[10px] text-white/30 whitespace-nowrap">
+            {filteredProducts.length} results
+          </span>
+
+          {/* Sort */}
+          <div className="relative" ref={sortRef}>
+            <button
+              onClick={() => setSortOpen(!sortOpen)}
+              className="h-7 px-3 text-[10px] uppercase border border-white/10 rounded-sm text-white/40 hover:bg-white/5"
+            >
+              {currentSortLabel}
+            </button>
+
+            {sortOpen && (
+              <div className="absolute right-0 mt-2 bg-[#111] border border-white/10 rounded-sm">
+                {SORT_OPTIONS.map(opt => (
+                  <div
+                    key={opt.value}
+                    onClick={() => { setSortBy(opt.value); setSortOpen(false); }}
+                    className={`px-4 py-2 text-[11px] uppercase cursor-pointer ${
+                      sortBy === opt.value
+                        ? "text-purple-400"
+                        : "text-white/40 hover:bg-white/5"
+                    }`}
+                  >
+                    {opt.label}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+        </div>
+      </div>
+
+      {/* Section */}
+      <div className="max-w-[1440px] mx-auto px-[clamp(16px,5vw,72px)] py-10">
+
+        {/* Heading */}
+        <h2 className="text-4xl font-black uppercase mb-6">
+          {selectedCategory === "all" ? "Featured Collection" : `${selectedCategory} Shoes`}
+        </h2>
+
+        {/* Grid */}
+        <div className="grid gap-5 grid-cols-[repeat(auto-fill,minmax(220px,1fr))]">
+
+          {visibleProducts.length === 0 ? (
+            <div className="col-span-full text-center py-20 text-white/40">
+              No shoes found
+            </div>
+          ) : (
+            visibleProducts.map(product => (
               <ProductCard
                 key={product.id}
                 product={product}
-                
+                onAddToCart={(id) => console.log("Added:", id)}
               />
-            ))}
-          </div>
-        )}
+            ))
+          )}
 
-        {/* Load More Button (Optional) */}
-        {filteredProducts.length >= 8 && (
-          <div className="text-center mt-12">
-            <button className="px-8 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg font-semibold hover:from-purple-700 hover:to-blue-700 transition-all duration-200 transform hover:scale-105">
-              Load More Products
+        </div>
+
+        {/* Load More */}
+        {hasMore && (
+          <div className="flex flex-col items-center mt-10 gap-4">
+            <button
+              onClick={() => setLoadCount(c => c + 8)}
+              className="px-6 py-2 border border-purple-400 text-purple-400 uppercase text-sm hover:bg-purple-400/20"
+            >
+              Load More
             </button>
           </div>
         )}
+
       </div>
     </div>
   );
